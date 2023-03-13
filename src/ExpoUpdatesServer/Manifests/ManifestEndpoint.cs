@@ -12,8 +12,8 @@ public static class ManifestEndpoint
         var parametersResult = ParseParameters(context);
         if (parametersResult.IsFailed)
             return Results.BadRequest(new ErrorResponse(parametersResult.Errors[0].Message));
-        
-        var (_, runtimeVersion) = parametersResult.Value;
+
+        var (platform, runtimeVersion) = parametersResult.Value;
         var runtimeDirectoryInfo = new DirectoryInfo($"updates/{runtimeVersion}");
         if (!runtimeDirectoryInfo.Exists)
             return Results.NotFound(new ErrorResponse($"No updates for runtimeVersion '{runtimeVersion}' available."));
@@ -28,9 +28,12 @@ public static class ManifestEndpoint
             {
                 CreatedAt = metadataReader.MetadataFile.CreationTime,
                 RuntimeVersion = runtimeVersion,
+                Assets = GetAssetsForPlatform(metadataResult.Value, platform)
+                    .Select(asset => new ManifestAsset(runtimeVersion, asset, options.Value))
+                    .ToArray()
             });
     }
-    
+
     private static string? ParseQueryOrHeaderValues(HttpContext context, string queryKey, string headerKey)
     {
         if (!context.Request.Query.TryGetValue(queryKey, out var stringValues))
@@ -61,5 +64,15 @@ public static class ManifestEndpoint
 
         var parameters = new ManifestParameters(platform, runtimeVersion);
         return Result.Ok(parameters);
+    }
+
+    private static IEnumerable<Asset> GetAssetsForPlatform(Metadata metadata, string platform)
+    {
+        return platform switch
+        {
+            "ios" => metadata.FileMetadata!.Ios!.Assets!,
+            "android" => metadata.FileMetadata!.Android!.Assets!,
+            _ => throw new ArgumentOutOfRangeException(nameof(platform))
+        };
     }
 }

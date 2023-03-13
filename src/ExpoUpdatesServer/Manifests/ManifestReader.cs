@@ -25,7 +25,7 @@ public class MetadataReader
             var metadataContents = await File.ReadAllBytesAsync($"updates/{_runtimeVersion}/metadata.json");
             var metadata = JsonSerializer.Deserialize<Metadata>(metadataContents, JsonOptions);
 
-            return metadata is null ? Result.Fail("Failed to parse metadata.json") : Result.Ok(metadata);
+            return metadata?.FileMetadata is null ? Result.Fail("Failed to parse metadata.json") : Result.Ok(metadata);
         }
         catch
         {

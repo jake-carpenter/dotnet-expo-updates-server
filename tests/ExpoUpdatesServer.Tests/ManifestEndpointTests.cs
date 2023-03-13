@@ -52,6 +52,90 @@ public class ManifestEndpointTests : IClassFixture<Fixture>, IDisposable
         response.RuntimeVersion.ShouldBe(runtimeVersion);
     }
 
+    [Theory(DisplayName = "Manifest response includes all assets in the bundle for the requested platform")]
+    [InlineData("ios", "android")]
+    [InlineData("android", "ios")]
+    public async Task Assets(string requestedPlatform, string otherPlatform)
+    {
+        const string runtimeVersion = "1";
+        var fakeData = new FakeMetadata(Fixture.UpdatesDirectory, runtimeVersion);
+
+        fakeData.AddAsset("png", platform: requestedPlatform);
+        fakeData.AddAsset("png", platform: otherPlatform);
+        fakeData.AddAsset("ttf", platform: requestedPlatform);
+        fakeData.WriteFiles();
+
+        var url = $"/manifest?platform={requestedPlatform}&runtimeVersion={runtimeVersion}";
+        var response = await _client.GetFromJsonAsync<Manifest>(url);
+
+        response.ShouldNotBeNull();
+        response.Assets.Count.ShouldBe(2);
+        response.Assets[0].FileExtension.ShouldBe(".png");
+        response.Assets[1].FileExtension.ShouldBe(".ttf");
+    }
+
+    [Fact(DisplayName = "Manifest response includes key of each asset matching the filename")]
+    public async Task AssetKey()
+    {
+        const string runtimeVersion = "1";
+        var fakeData = new FakeMetadata(Fixture.UpdatesDirectory, runtimeVersion);
+
+        fakeData.AddAsset("png");
+        fakeData.AddAsset("ttf");
+        fakeData.WriteFiles();
+
+        const string url = $"/manifest?platform=ios&runtimeVersion={runtimeVersion}";
+        var response = await _client.GetFromJsonAsync<Manifest>(url);
+
+        response.ShouldNotBeNull();
+        response.Assets.Count.ShouldBe(2);
+        response.Assets[0].Key.ShouldBe(fakeData.AssetFiles[0].Filename);
+        response.Assets[1].Key.ShouldBe(fakeData.AssetFiles[1].Filename);
+    }
+
+    [Fact(DisplayName = "Manifest response includes file extension of each asset")]
+    public async Task AssetFileExtension()
+    {
+        const string runtimeVersion = "1";
+        var fakeData = new FakeMetadata(Fixture.UpdatesDirectory, runtimeVersion);
+
+        fakeData.AddAsset("png");
+        fakeData.AddAsset("ttf");
+        fakeData.WriteFiles();
+
+        const string url = $"/manifest?platform=ios&runtimeVersion={runtimeVersion}";
+        var response = await _client.GetFromJsonAsync<Manifest>(url);
+
+        response.ShouldNotBeNull();
+        response.Assets.Count.ShouldBe(2);
+        response.Assets[0].FileExtension.ShouldBe(fakeData.AssetFiles[0].Extension);
+        response.Assets[1].FileExtension.ShouldBe(fakeData.AssetFiles[1].Extension);
+    }
+
+    [Theory(DisplayName = "Manifest response includes full URL of each asset")]
+    [InlineData("https://foo.bar/ota-files", "1", "https://foo.bar/ota-files/assets?asset=updates/1/assets/")]
+    [InlineData(
+        "https://devws.mwiah.com/mobile-ota",
+        "2.9",
+        "https://devws.mwiah.com/mobile-ota/assets?asset=updates/2.9/assets/")]
+    public async Task AssetUrl(string baseUrl, string runtimeVersion, string expectedUrlAndQuery)
+    {
+        _fixture.AppConfig = new Config { BaseUrl = baseUrl };
+        var fakeData = new FakeMetadata(Fixture.UpdatesDirectory, runtimeVersion);
+
+        fakeData.AddAsset("png");
+        fakeData.AddAsset("ttf");
+        fakeData.WriteFiles();
+
+        var url = $"/manifest?platform=ios&runtimeVersion={runtimeVersion}";
+        var response = await _client.GetFromJsonAsync<Manifest>(url);
+
+        response.ShouldNotBeNull();
+        response.Assets.Count.ShouldBe(2);
+        response.Assets[0].Url.ShouldBe($"{expectedUrlAndQuery}{fakeData.AssetFiles[0].Filename}");
+        response.Assets[1].Url.ShouldBe($"{expectedUrlAndQuery}{fakeData.AssetFiles[1].Filename}");
+    }
+
     [Fact(DisplayName = "HTTP 400 when neither 'expo-platform' header nor 'platform' param are provided")]
     public async Task NoPlatform()
     {
@@ -131,7 +215,7 @@ public class ManifestEndpointTests : IClassFixture<Fixture>, IDisposable
         errorResponse.ShouldNotBeNull();
         errorResponse.Detail.ShouldBe("Failed to parse metadata.json");
     }
-    
+
     [Fact(DisplayName = "HTTP 404 when metadata.json can't be parsed")]
     public async Task BadMetadata()
     {
